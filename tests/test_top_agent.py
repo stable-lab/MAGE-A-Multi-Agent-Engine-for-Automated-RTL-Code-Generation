@@ -33,14 +33,15 @@ args_dict = {
     #    "Prob145_circuit8|Prob146_fsm_serialdata"
     #    ")$"
     # ),
-    "filter_instance": "^(Prob011_norgate)$",
-    # "filter_instance": "^(.*)$",
+    # "filter_instance": "^(Prob011_norgate)$",
+    "filter_instance": "^(.*)$",
     "type_benchmark": "verilog_eval_v2",
     "path_benchmark": "../verilog-eval",
-    "run_identifier": "claude3.5sonnet_20241113_v2",
+    "run_identifier": "claude3.5sonnet_20250122_v2",
     "n": 1,
     "temperature": 0.85,
     "top_p": 0.95,
+    "use_golden_tb_in_mage": False,
 }
 
 
@@ -86,8 +87,12 @@ def run_round(args: argparse.Namespace, llm: LLM):
             benchmark_type_name=type_benchmark.name,
             task_id=task_id,
             spec=spec,
-            golden_tb_path=golden_tb_path_dict[task_id],
-            golden_rtl_blackbox_path=golden_rtl_path_dict[task_id],
+            golden_tb_path=(
+                golden_tb_path_dict[task_id] if args.use_golden_tb_in_mage else None
+            ),
+            golden_rtl_blackbox_path=(
+                golden_rtl_path_dict[task_id] if args.use_golden_tb_in_mage else None
+            ),
         )
         run_time = timedelta(seconds=time.monotonic() - start_time)
         print(f"{task_id} took {run_time} to execute")

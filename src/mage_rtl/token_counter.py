@@ -104,6 +104,7 @@ class TokenCounter:
         self.token_cnts: Dict[str, List[TokenCount]] = {"": []}
         self.token_cnts_lock = asyncio.Lock()
         self.cur_tag = ""
+        self.max_parallel_requests: int = 10
         model = llm.metadata.model_name
         if isinstance(llm, OpenAI):
             self.encoding = tiktoken.encoding_for_model(model)
@@ -170,10 +171,15 @@ class TokenCounter:
         self, chat_inputs: List[List[ChatMessage]], llm: LLM | None = None
     ) -> List[Tuple[ChatResponse, TokenCount]]:
         llm = llm or self.llm
-        tasks = [
-            self.count_achat(llm=llm, messages=chat_input) for chat_input in chat_inputs
-        ]
-        return await asyncio.gather(*tasks)
+        results = []
+        for i in range(0, len(chat_inputs), self.max_parallel_requests):
+            batch = chat_inputs[i : i + self.max_parallel_requests]
+            tasks = [
+                self.count_achat(llm=llm, messages=chat_input) for chat_input in batch
+            ]
+            batch_results = await asyncio.gather(*tasks)
+            results.extend(batch_results)
+        return results
 
     def count_chat_batch(
         self, chat_inputs: List[List[ChatMessage]], llm: LLM | None = None

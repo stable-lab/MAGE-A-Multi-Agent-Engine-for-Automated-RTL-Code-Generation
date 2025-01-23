@@ -33,7 +33,8 @@ The testbench should:
 2. Generate input stimulate signals and expected output signals according to input_spec;
 3. Apply the input signals to the module, count the number of mismatches between the output signals with the expected output signals;
 4. Every time when a check occurs, no matter match or mismatch, display input signals, output signals and expected output signals;
-5. Display "SIMULATION PASSED" if no mismatch occurs, otherwise display "SIMULATION FAILED - x MISMATCHES DETECTED".
+5. When simulation ends, ADD DISPLAY "SIMULATION PASSED" if no mismatch occurs, otherwise display:
+    "SIMULATION FAILED - x MISMATCHES DETECTED, FIRST AT TIME y".
 6. To avoid ambiguity, please use the reverse edge to do output check. (If RTL runs at posedge, use negedge to check the output)
 7. For pure combinational module (especially those without clk),
     the expected output should be checked at the exact moment when the input is changed;
@@ -45,6 +46,9 @@ An SystemVerilog module always starts with a line starting with the keyword 'mod
 It ends with the keyword 'endmodule'.
 
 {examples_prompt}
+
+Please also follow the display prompt below:
+{display_prompt}
 """
 
 GOLDEN_TB_PROMPT = r"""
@@ -66,6 +70,7 @@ In detail, the testbench you generated should:
 3. MAINTAIN the original logic of error counting;
 4. When simulation ends, ADD DISPLAY "SIMULATION PASSED" if no mismatch occurs, otherwise display:
     "SIMULATION FAILED - x MISMATCHES DETECTED, FIRST AT TIME y".
+Please also follow the display prompt below:
 {display_prompt}
 
 
@@ -81,24 +86,24 @@ Below is the golden testbench code for the module generated with the given natur
 """
 
 DISPLAY_MOMENT_PROMPT = r"""
-5. When the first mismatch occurs, display the input signals, output signals and expected output signals at that time.
-6. For multiple-bit signals displayed in HEX format, also display the BINARY format if its width <= 64.
+1. When the first mismatch occurs, display the input signals, output signals and expected output signals at that time.
+2. For multiple-bit signals displayed in HEX format, also display the BINARY format if its width <= 64.
 """
 
 DISPLAY_QUEUE_PROMPT = r"""
-5. If module to test is sequential logic (like including an FSM):
-    5.1. Store input signals, output signals, expected output signals and reset signals in a queue with MAX_QUEUE_SIZE;
+1. If module to test is sequential logic (like including an FSM):
+    1.1. Store input signals, output signals, expected output signals and reset signals in a queue with MAX_QUEUE_SIZE;
         When the first mismatch occurs, display the queue content after storing it. Make sure the mismatched signal can be displayed.
-    5.2. MAX_QUEUE_SIZE should be set according to the requirement of the module.
+    1.2. MAX_QUEUE_SIZE should be set according to the requirement of the module.
         For example, if the module has a 3-bit state, MAX_QUEUE_SIZE should be at least 2 ** 3 = 8.
         And if the module was to detect a pattern of 8 bits, MAX_QUEUE_SIZE should be at least (8 + 1) = 9.
         However, to control log size, NEVER set MAX_QUEUE_SIZE > 10.
-    5.3. The clocking of queue and display should be same with the clocking of tb_match detection.
+    1.3. The clocking of queue and display should be same with the clocking of tb_match detection.
         For example, if 'always @(posedge clk, negedge clk)' is used to detect mismatch,
         It should also be used to push queue and display first error.
-6. If module to test is combinational logic:
+2. If module to test is combinational logic:
     When the first mismatch occurs, display the input signals, output signals and expected output signals at that time.
-7. For multiple-bit signals displayed in HEX format, also display the BINARY format if its width <= 64.
+3. For multiple-bit signals displayed in HEX format, also display the BINARY format if its width <= 64.
 
 <display_queue_example>
 // Queue-based simulation mismatch display
@@ -221,14 +226,12 @@ class TBGenerator:
         return resp
 
     def get_init_prompt_messages(self, input_spec: str) -> List[ChatMessage]:
+        display_prompt = (
+            DISPLAY_QUEUE_PROMPT if self.gen_display_queue else DISPLAY_MOMENT_PROMPT
+        )
         if self.golden_tb_path:
             with open(self.golden_tb_path, "r") as f:
                 golden_testbench = f.read()
-            display_prompt = (
-                DISPLAY_QUEUE_PROMPT
-                if self.gen_display_queue
-                else DISPLAY_MOMENT_PROMPT
-            )
             generation_content = GOLDEN_TB_PROMPT.format(
                 input_spec=input_spec,
                 golden_testbench=golden_testbench,
@@ -236,7 +239,9 @@ class TBGenerator:
             )
         else:
             generation_content = NON_GOLDEN_TB_PROMPT.format(
-                input_spec=input_spec, examples_prompt=TB_4_SHOT_EXAMPLES
+                input_spec=input_spec,
+                examples_prompt=TB_4_SHOT_EXAMPLES,
+                display_prompt=display_prompt,
             )
         ret = [
             ChatMessage(content=SYSTEM_PROMPT, role=MessageRole.SYSTEM),
@@ -292,9 +297,6 @@ class TBGenerator:
             response = self.generate(self.history + self.get_order_prompt_messages())
             resp_obj = self.parse_output(response)
             if not resp_obj.reasoning.startswith("Json Decode Error"):
-                logger.info(
-                    f"TB generation Error: {resp_obj.reasoning}, drop this response"
-                )
                 break
             error_msg = ChatMessage(role=MessageRole.USER, content=resp_obj.reasoning)
             self.history.extend([response.message, error_msg])

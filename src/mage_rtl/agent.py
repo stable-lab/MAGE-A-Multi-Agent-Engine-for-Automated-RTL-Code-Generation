@@ -76,6 +76,8 @@ class TopAgent:
 
         self.tb_gen.reset()
         self.tb_gen.set_golden_tb_path(self.golden_tb_path)
+        if not self.golden_tb_path:
+            logger.info("No golden testbench provided")
         testbench, interface = self.tb_gen.chat(spec)
         logger.info("Initial tb:")
         logger.info(testbench)
